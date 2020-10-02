@@ -135,7 +135,10 @@ class CPU:
             def PRN():
                 print(self.reg[operand_a])
 
-            dispatch = {1: HLT(), 130: LDI(), 71: PRN()}
+            dispatch = dict()
+            dispatch[int("00000001", 2)] = HLT()
+            dispatch[int("10000010", 2)] = LDI()
+            dispatch[int("01000111", 2)] = PRN()
 
             try:
                 dispatch[self.ir]
