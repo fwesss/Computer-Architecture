@@ -51,14 +51,14 @@ class CPU:
         try:
             return self.ram[mar]
         except IndexError:
-            print("Error: MAR out of bounds")
+            print(f"Error: Cannot read. MAR '{mar}' out of bounds")
             return -1
 
     def ram_write(self, mar: int, mdr: int) -> Optional[int]:
         try:
             self.ram[mar] = mdr & 0xFF
         except IndexError:
-            print("Error: MAR out of bounds")
+            print(f"Error: Cannot write. MAR '{mar}' out of bounds")
             return -1
 
     def load(self, ins_file: str):
@@ -80,13 +80,23 @@ class CPU:
             address += 1
 
     def alu(self, op, reg_a, reg_b):
-        """ALU operations."""
+        def run_instruction():
+            """ALU operations."""
 
-        if op == "ADD":
-            self.reg[reg_a] += self.reg[reg_b]
-        # elif op == "SUB": etc
-        else:
-            raise Exception("Unsupported ALU operation")
+            def ADD():
+                self.reg[reg_a] += self.reg[reg_b]
+
+            def MUL():
+                self.reg[reg_a] *= self.reg[reg_b]
+
+            dispatch = {"ADD": ADD, "MUL": MUL}
+
+            try:
+                dispatch[op]()
+            except KeyError:
+                raise Exception("Unsupported ALU operation")
+
+        return run_instruction
 
     def trace(self):
         """
@@ -120,7 +130,7 @@ class CPU:
             operand_a = self.ram_read(self.pc + 1)
             operand_b = self.ram_read(self.pc + 2)
 
-            binary_ir = bin(self.ir)[2:].zfill(0)
+            binary_ir = format(self.ir, "#010b")[2:]
             operand_count = int(binary_ir[:2], 2)
 
             def HLT():
@@ -133,13 +143,14 @@ class CPU:
                 print(self.reg[operand_a])
 
             dispatch = dict()
-            dispatch[int("00000001", 2)] = HLT()
-            dispatch[int("10000010", 2)] = LDI()
-            dispatch[int("01000111", 2)] = PRN()
+            dispatch[int("00000001", 2)] = HLT
+            dispatch[int("10000010", 2)] = LDI
+            dispatch[int("01000111", 2)] = PRN
+            dispatch[int("10100010", 2)] = self.alu("MUL", operand_a, operand_b)
 
             try:
-                dispatch[self.ir]
+                dispatch[self.ir]()
             except KeyError:
-                print("Error: command not found")
+                print(f"Error: command {self.ir} not found")
 
             self.pc += 1 + operand_count
