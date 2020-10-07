@@ -130,8 +130,9 @@ class CPU:
             operand_a = self.ram_read(self.pc + 1)
             operand_b = self.ram_read(self.pc + 2)
 
-            binary_ir = format(self.ir, "#010b")[2:]
-            operand_count = int(binary_ir[:2], 2)
+            operand_count = self.ir >> 6
+            is_alu = self.ir >> 5 & 0b1
+            command = self.ir & 0b111
 
             def HLT():
                 self.running = False
@@ -143,14 +144,22 @@ class CPU:
                 print(self.reg[operand_a])
 
             dispatch = dict()
-            dispatch[int("00000001", 2)] = HLT
-            dispatch[int("10000010", 2)] = LDI
-            dispatch[int("01000111", 2)] = PRN
-            dispatch[int("10100010", 2)] = self.alu("MUL", operand_a, operand_b)
+            dispatch[0b1] = HLT
+            dispatch[0b10] = LDI
+            dispatch[0b111] = PRN
 
-            try:
-                dispatch[self.ir]()
-            except KeyError:
-                print(f"Error: command {self.ir} not found")
+            alu_dispatch = dict()
+            alu_dispatch[0b10] = self.alu("MUL", operand_a, operand_b)
+
+            if is_alu:
+                try:
+                    alu_dispatch[command]()
+                except KeyError:
+                    print(f"Error: command {command} not found")
+            else:
+                try:
+                    dispatch[command]()
+                except KeyError:
+                    print(f"Error: command {command} not found")
 
             self.pc += 1 + operand_count
