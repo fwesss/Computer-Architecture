@@ -10,6 +10,7 @@ class CPU:
         """Construct a new CPU."""
         self._ram = [0] * 256
         self._reg = [0] * 8
+        self._reg[7] = 0xF4
 
         self._pc = 0
         self._ir = 0
@@ -108,8 +109,6 @@ class CPU:
             f"TRACE: %02X | %02X %02X %02X |"
             % (
                 self.pc,
-                # self.fl,
-                # self.ie,
                 self.ram_read(self.pc),
                 self.ram_read(self.pc + 1),
                 self.ram_read(self.pc + 2),
@@ -143,10 +142,20 @@ class CPU:
             def PRN():
                 print(self.reg[operand_a])
 
+            def PUSH():
+                self.reg[7] -= 1
+                self.ram_write(self.reg[7], self.reg[operand_a])
+
+            def POP():
+                self.reg[operand_a] = self.ram_read(self.reg[7])
+                self.reg[7] += 1
+
             dispatch = dict()
             dispatch[0b1] = HLT
             dispatch[0b10] = LDI
             dispatch[0b111] = PRN
+            dispatch[0b101] = PUSH
+            dispatch[0b110] = POP
 
             alu_dispatch = dict()
             alu_dispatch[0b10] = self.alu("MUL", operand_a, operand_b)
