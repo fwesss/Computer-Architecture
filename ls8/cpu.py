@@ -1,6 +1,6 @@
 """CPU functionality."""
 
-from typing import List, Optional
+from typing import List, Optional, Dict
 
 
 class CPU:
@@ -8,13 +8,14 @@ class CPU:
 
     def __init__(self):
         """Construct a new CPU."""
-        self._ram = [0] * 256
+        self._ram = [0] * 0x100
         self._reg = [0] * 8
         self._reg[7] = 0xF4
 
         self._pc = 0
         self._ir = 0
         self._running = False
+        self._fl = {"L": 0, "G": 0, "E": 0}
 
     @property
     def running(self) -> bool:
@@ -47,6 +48,14 @@ class CPU:
     @ir.setter
     def ir(self, value: int) -> None:
         self._ir = value
+
+    @property
+    def fl(self) -> Dict[str, int]:
+        return self._fl
+
+    @fl.setter
+    def fl(self, value: Dict[str, int]) -> None:
+        self._fl = value
 
     def ram_read(self, mar: int) -> int:
         try:
@@ -81,7 +90,7 @@ class CPU:
             address += 1
 
     def alu(self, op, reg_a, reg_b):
-        def run_instruction():
+        def operate():
             """ALU operations."""
 
             def ADD():
@@ -90,14 +99,22 @@ class CPU:
             def MUL():
                 self.reg[reg_a] *= self.reg[reg_b]
 
-            dispatch = {"ADD": ADD, "MUL": MUL}
+            def CMP():
+                if self.reg[reg_a] == self.reg[reg_b]:
+                    self.fl = {"L": 0, "G": 0, "E": 1}
+                elif self.reg[reg_a] < self.reg[reg_b]:
+                    self.fl = {"L": 1, "G": 0, "E": 0}
+                else:
+                    self.fl = {"L": 0, "G": 1, "E": 0}
+
+            dispatch = {"ADD": ADD, "MUL": MUL, "CMP": CMP}
 
             try:
                 dispatch[op]()
             except KeyError:
                 raise Exception("Unsupported ALU operation")
 
-        return run_instruction
+        return operate
 
     def trace(self):
         """
@@ -130,7 +147,8 @@ class CPU:
             operand_b = self.ram_read(self.pc + 2)
 
             operand_count = self.ir >> 6
-            is_alu = self.ir >> 5 & 0b1
+            is_alu = self.ir >> 5 & 1
+            sets_pc = self.ir >> 4 & 1
             command = self.ir & 0b111
 
             def HLT():
@@ -150,25 +168,65 @@ class CPU:
                 self.reg[operand_a] = self.ram_read(self.reg[7])
                 self.reg[7] += 1
 
+            def CALL():
+                self.reg[7] -= 1
+                self.ram_write(self.reg[7], self.pc + 2)
+                self.pc = self.reg[operand_a]
+
+            def RET():
+                self.pc = self.ram_read(self.reg[7])
+                self.reg[7] += 1
+
+            def JMP():
+                self.reg[7] -= 1
+                self.pc = self.reg[operand_a]
+
+            def JEQ():
+                if self.fl["E"]:
+                    JMP()
+                else:
+                    self.pc += 1 + operand_count
+
+            def JNE():
+                if not self.fl["E"]:
+                    JMP()
+                else:
+                    self.pc += 1 + operand_count
+
             dispatch = dict()
-            dispatch[0b1] = HLT
-            dispatch[0b10] = LDI
-            dispatch[0b111] = PRN
-            dispatch[0b101] = PUSH
-            dispatch[0b110] = POP
+            dispatch[0b0001] = HLT
+            dispatch[0b0010] = LDI
+            dispatch[0b0111] = PRN
+            dispatch[0b0101] = PUSH
+            dispatch[0b0110] = POP
 
             alu_dispatch = dict()
-            alu_dispatch[0b10] = self.alu("MUL", operand_a, operand_b)
+            alu_dispatch[0b0000] = self.alu("ADD", operand_a, operand_b)
+            alu_dispatch[0b0010] = self.alu("MUL", operand_a, operand_b)
+            alu_dispatch[0b0111] = self.alu("CMP", operand_a, operand_b)
 
-            if is_alu:
+            pc_dispatch = dict()
+            pc_dispatch[0b0000] = CALL
+            pc_dispatch[0b0001] = RET
+            pc_dispatch[0b0100] = JMP
+            pc_dispatch[0b0101] = JEQ
+            pc_dispatch[0b0110] = JNE
+
+            if sets_pc:
+                try:
+                    pc_dispatch[command]()
+                except KeyError:
+                    print(f"Error: pc command {command} not found")
+            elif is_alu:
                 try:
                     alu_dispatch[command]()
                 except KeyError:
-                    print(f"Error: command {command} not found")
+                    print(f"Error: alu command {command} not found")
             else:
                 try:
                     dispatch[command]()
                 except KeyError:
                     print(f"Error: command {command} not found")
 
-            self.pc += 1 + operand_count
+            if not sets_pc:
+                self.pc += 1 + operand_count
